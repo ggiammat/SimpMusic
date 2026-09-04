@@ -185,6 +185,9 @@ dependencies {
     } else {
         implementation(projects.crashlyticsEmpty)
     }
+
+    // Tasker
+    implementation(libs.taskerpluginlibrary)
 }
 
 sentry {
