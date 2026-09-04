@@ -96,6 +96,7 @@ nucleus-notification = "2.4.7"
 commonsIo = "2.5"
 packagedeps = "0.2.5"
 conveyor = "2.0"
+taskerpluginlibrary = "0.4.10"
 
 [libraries]
 desugaring = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.ref = "desugaring"}
@@ -256,6 +257,9 @@ material = { group = "com.google.android.material", name = "material", version.r
 #Google Cast
 play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "play-services-cast-framework" }
 androidx-mediarouter = { group = "androidx.mediarouter", name = "mediarouter", version.ref = "mediarouter" }
+
+#Tasker
+taskerpluginlibrary = { module = "com.joaomgcd:taskerpluginlibrary", version.ref = "taskerpluginlibrary"}
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "android" }
