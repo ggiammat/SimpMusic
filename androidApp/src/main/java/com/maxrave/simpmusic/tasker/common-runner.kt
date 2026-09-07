@@ -20,7 +20,6 @@ import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.repository.SongRepository
 import com.maxrave.logger.Logger
-import com.maxrave.media3.service.SimpleMediaService
 import com.maxrave.simpmusic.viewModel.HomeViewModel
 import kotlinx.coroutines.runBlocking
 import multiplatform.network.cmptoast.ToastDuration
