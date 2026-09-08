@@ -2,7 +2,6 @@ package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
@@ -19,87 +18,84 @@ import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResult
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultErrorWithOutput
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultSucess
 import com.maxrave.logger.Logger
-import com.maxrave.simpmusic.tasker.CommonRunner
 import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
 import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
 import kotlinx.coroutines.flow.firstOrNull
 import com.maxrave.simpmusic.R
 
 @TaskerInputRoot
-class SongInfoInput @JvmOverloads constructor(
+class GetSongInfoInput @JvmOverloads constructor(
     @field:TaskerInputField(
         "song_id",
-        labelResIdName = "song_id_name",
-        descriptionResIdName = "song_id_description"
+        labelResIdName = "songinfo_input_song_id_name",
+        descriptionResIdName = "songinfo_input_song_id_description"
     ) var songId: String? = null
 )
 
 @TaskerOutputObject
-class SongInfoOutput(
+class GetSongInfoOutput(
     @get:TaskerOutputVariable("song_id",
-        labelResIdName = "out_song_id_name",
-        htmlLabelResIdName = "out_song_id_description"
+        labelResIdName = "songinfo_output_song_id_name",
+        htmlLabelResIdName = "songinfo_output_song_id_description"
     ) var songId: String?,
 
     @get:TaskerOutputVariable("song_title",
-        labelResIdName = "out_song_title_name",
-        htmlLabelResIdName = "out_song_title_description"
+        labelResIdName = "songinfo_output_song_title_name",
+        htmlLabelResIdName = "songinfo_output_song_title_description"
     ) var songTitle: String?,
 
     @get:TaskerOutputVariable("artist_id",
-        labelResIdName = "out_artist_id_name",
-        htmlLabelResIdName = "out_artist_id_description"
+        labelResIdName = "songinfo_output_artist_id_name",
+        htmlLabelResIdName = "songinfo_output_artist_id_description"
     ) var artistId: String?,
 
     @get:TaskerOutputVariable("artist_name",
-        labelResIdName = "out_artist_name_name",
-        htmlLabelResIdName = "out_artist_name_description"
+        labelResIdName = "songinfo_output_artist_name_name",
+        htmlLabelResIdName = "songinfo_output_artist_name_description"
     ) var artistName: String?,
 
     @get:TaskerOutputVariable("liked",
-        labelResIdName = "out_liked_name",
-        htmlLabelResIdName = "out_liked_description"
+        labelResIdName = "songinfo_output_liked_name",
+        htmlLabelResIdName = "songinfo_output_liked_description"
     ) var liked: Boolean?,
 
     @get:TaskerOutputVariable("now_playing",
-        labelResIdName = "out_now_playing_name",
-        htmlLabelResIdName = "out_now_playing_description"
+        labelResIdName = "songinfo_output_now_playing_name",
+        htmlLabelResIdName = "songinfo_output_now_playing_description"
     ) var nowPlaying: Boolean?,
 
     @get:TaskerOutputVariable("album_title",
-        labelResIdName = "out_album_title_name",
-        htmlLabelResIdName = "out_album_title_description"
+        labelResIdName = "songinfo_output_album_title_name",
+        htmlLabelResIdName = "songinfo_output_album_title_description"
     ) var albumTitle: String?,
 
     @get:TaskerOutputVariable("album_id",
-        labelResIdName = "out_album_id_name",
-        htmlLabelResIdName = "out_album_id_description"
+        labelResIdName = "songinfo_output_album_id_name",
+        htmlLabelResIdName = "songinfo_output_album_id_description"
     ) var albumId: String?
 )
 
 
-class SongInfoActionHelper(config: TaskerPluginConfig<SongInfoInput>) :
-    TaskerPluginConfigHelper<SongInfoInput, SongInfoOutput, SongInfoActionRunner>(config) {
-    override val inputClass = SongInfoInput::class.java
-    override val outputClass = SongInfoOutput::class.java
-    override val runnerClass = SongInfoActionRunner::class.java
+class GetSongInfoActionHelper(config: TaskerPluginConfig<GetSongInfoInput>) :
+    TaskerPluginConfigHelper<GetSongInfoInput, GetSongInfoOutput, GetSongInfoActionRunner>(config) {
+    override val inputClass = GetSongInfoInput::class.java
+    override val outputClass = GetSongInfoOutput::class.java
+    override val runnerClass = GetSongInfoActionRunner::class.java
 }
 
 
-class SongInfoConfigActivity : ComponentActivity(), TaskerPluginConfig<SongInfoInput> {
-
-    override val context get() = applicationContext
+class GetSongInfoConfigActivity : TaskerCommonConfigActivity<GetSongInfoInput>() {
 
     val songId = mutableStateOf("")
 
-    override fun assignFromInput(input: TaskerInput<SongInfoInput>) {
+    override fun assignFromInput(input: TaskerInput<GetSongInfoInput>) {
         songId.value = input.regular.songId ?: ""
     }
 
-    override val inputForTasker: TaskerInput<SongInfoInput>
-        get() = TaskerInput(SongInfoInput(songId = songId.value))
+    override val inputForTasker: TaskerInput<GetSongInfoInput>
+        get() = TaskerInput(GetSongInfoInput(songId = songId.value))
 
-    private val taskerHelper by lazy { SongInfoActionHelper(this) }
+    private val taskerHelper by lazy { GetSongInfoActionHelper(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -118,7 +114,6 @@ class SongInfoConfigActivity : ComponentActivity(), TaskerPluginConfig<SongInfoI
         }
 
         taskerHelper.onCreate()
-        //taskerHelper.finishForTasker()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val result = taskerHelper.onBackPressed()
@@ -133,12 +128,12 @@ class SongInfoConfigActivity : ComponentActivity(), TaskerPluginConfig<SongInfoI
 }
 
 
-class SongInfoActionRunner : CommonRunner<SongInfoInput, SongInfoOutput>() {
+class GetSongInfoActionRunner : TaskerCommonRunner<GetSongInfoInput, GetSongInfoOutput>() {
 
-    override suspend fun runWithMusicService(
+    override suspend fun runSuspended(
         context: Context,
-        input: TaskerInput<SongInfoInput>,
-    ): TaskerPluginResult<SongInfoOutput> {
+        input: TaskerInput<GetSongInfoInput>,
+    ): TaskerPluginResult<GetSongInfoOutput> {
 
         Logger.w("Tasker", "Log: ${mediaPlayerHandler.nowPlaying.value}")
 
@@ -154,7 +149,7 @@ class SongInfoActionRunner : CommonRunner<SongInfoInput, SongInfoOutput>() {
 
         songRepository.getSongById(currentSongId).firstOrNull()?.let { song ->
             return TaskerPluginResultSucess(
-                SongInfoOutput(
+                GetSongInfoOutput(
                     songId = song.videoId,
                     songTitle = song.title,
                     artistId = song.artistId?.first(),
@@ -172,35 +167,5 @@ class SongInfoActionRunner : CommonRunner<SongInfoInput, SongInfoOutput>() {
             message = "Song with ID=${currentSongId} not found"
         )
 
-        /*
-
-
-        val res = musicService.database.song(songId).firstOrNull()
-        val songEntity = res?.song
-        val artist = res?.artists?.first()
-        val album = res?.album
-
-
-        if (songEntity != null) {
-            return TaskerPluginResultSucess(
-                SongInfoOutput(
-                    songId = songEntity.id,
-                    songTitle = songEntity.title,
-                    artistId = artist?.id,
-                    artistName = artist?.name,
-                    liked = songEntity.liked,
-                    year = songEntity.year ?: album?.year,
-                    albumTitle = album?.title,
-                    albumId = album?.id
-                )
-            )
-        }
-        else {
-            return TaskerPluginResultErrorWithOutput(
-                code = 1,
-                message = "Song with ID=${songId} not found"
-            )
-        }
-         */
     }
 }

@@ -2,7 +2,6 @@ package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
@@ -18,12 +17,9 @@ import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputVariable
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResult
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultErrorWithOutput
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultSucess
-import com.maxrave.simpmusic.tasker.CommonRunner
 import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
 import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.withContext
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.R
 
@@ -39,7 +35,7 @@ enum class Commands {
 }
 
 @TaskerInputRoot
-class PlaybackCommandInput @JvmOverloads constructor(
+class ManagePlayerInput @JvmOverloads constructor(
     @field:TaskerInputField(
         "command",
         labelResIdName = "command_name",
@@ -48,41 +44,39 @@ class PlaybackCommandInput @JvmOverloads constructor(
 )
 
 @TaskerOutputObject
-class PlaybackCommandOutput(
+class ManagePlayerOutput(
     @get:TaskerOutputVariable("executed",
         labelResIdName = "out_executed_name",
         htmlLabelResIdName = "out_executed_description"
     ) var executed: Boolean?,
 )
 
-class PlaybackCommandActionHelper(config: TaskerPluginConfig<PlaybackCommandInput>) :
-    TaskerPluginConfigHelper<PlaybackCommandInput, PlaybackCommandOutput, PlaybackCommandActionRunner>(config) {
-    override val inputClass = PlaybackCommandInput::class.java
-    override val outputClass = PlaybackCommandOutput::class.java
-    override val runnerClass = PlaybackCommandActionRunner::class.java
+class ManagePlayerActionHelper(config: TaskerPluginConfig<ManagePlayerInput>) :
+    TaskerPluginConfigHelper<ManagePlayerInput, ManagePlayerOutput, ManagePlayerActionRunner>(config) {
+    override val inputClass = ManagePlayerInput::class.java
+    override val outputClass = ManagePlayerOutput::class.java
+    override val runnerClass = ManagePlayerActionRunner::class.java
 }
 
-class PlaybackCommandConfigActivity : ComponentActivity(), TaskerPluginConfig<PlaybackCommandInput> {
-
-    override val context get() = applicationContext
+class ManagePlayerConfigActivity : TaskerCommonConfigActivity<ManagePlayerInput>() {
 
     val command = mutableStateOf("")
 
-    override fun assignFromInput(input: TaskerInput<PlaybackCommandInput>) {
+    override fun assignFromInput(input: TaskerInput<ManagePlayerInput>) {
         command.value = input.regular.command ?: ""
     }
 
-    override val inputForTasker: TaskerInput<PlaybackCommandInput>
-        get() = TaskerInput(PlaybackCommandInput(command = command.value))
+    override val inputForTasker: TaskerInput<ManagePlayerInput>
+        get() = TaskerInput(ManagePlayerInput(command = command.value))
 
-    private val taskerHelper by lazy { PlaybackCommandActionHelper(this) }
+    private val taskerHelper by lazy { ManagePlayerActionHelper(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
         setContent {
             TaskerConfigurationScreen(
-                title = "Configure Playback Command action"
+                title = "Configure Manage Player action"
             ) {
                 TaskerConfigurationItem(
                     inputLabel = stringResource(R.string.command_name),
@@ -109,12 +103,12 @@ class PlaybackCommandConfigActivity : ComponentActivity(), TaskerPluginConfig<Pl
 }
 
 
-class PlaybackCommandActionRunner : CommonRunner<PlaybackCommandInput, PlaybackCommandOutput>() {
+class ManagePlayerActionRunner : TaskerCommonRunner<ManagePlayerInput, ManagePlayerOutput>() {
 
-    override suspend fun runWithMusicService(
+    override suspend fun runSuspended(
         context: Context,
-        input: TaskerInput<PlaybackCommandInput>,
-    ): TaskerPluginResult<PlaybackCommandOutput> {
+        input: TaskerInput<ManagePlayerInput>,
+    ): TaskerPluginResult<ManagePlayerOutput> {
 
         var executed = false
         val command: Commands
@@ -192,24 +186,15 @@ class PlaybackCommandActionRunner : CommonRunner<PlaybackCommandInput, PlaybackC
 
             Commands.PREVIOUS_SONG -> {
                 if(mediaPlayerHandler.player.hasPreviousMediaItem()) {
-                    mediaPlayerHandler.player.seekToPrevious()
+                    mediaPlayerHandler.player.seekToPreviousMediaItem()
                     executed = true
                 }
-                /*
-                withContext(Dispatchers.Main) {
-                    if(musicService.player.hasPreviousMediaItem()) {
-                        musicService.player.seekToPrevious()
-                        executed = true
-                    }
-                }
-
-                 */
             }
         }
 
 
         return TaskerPluginResultSucess(
-            regular = PlaybackCommandOutput(
+            regular = ManagePlayerOutput(
                 executed = executed
             )
         )
