@@ -315,7 +315,7 @@
 
         <!-- Tasker -->
         <activity
-            android:name=".tasker.actions.SongInfoConfigActivity"
+            android:name=".tasker.actions.GetSongInfoConfigActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="Song Info">
@@ -325,20 +325,20 @@
         </activity>
 
         <activity
-            android:name=".tasker.actions.PlaybackCommandConfigActivity"
+            android:name=".tasker.actions.ManagePlayerConfigActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="Playback Command">
+            android:label="Manage Player">
             <intent-filter>
                 <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
             </intent-filter>
         </activity>
 
         <activity
-            android:name=".tasker.actions.PlaylistConfigActivity"
+            android:name=".tasker.actions.ManageQueueConfigActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="Playlist Action">
+            android:label="Manage Queue">
             <intent-filter>
                 <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
             </intent-filter>

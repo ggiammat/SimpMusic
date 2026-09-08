@@ -2,7 +2,6 @@ package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
@@ -16,24 +15,16 @@ import com.joaomgcd.taskerpluginlibrary.input.TaskerInputRoot
 import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputObject
 import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputVariable
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResult
-import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultError
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultErrorWithOutput
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultSucess
-import com.maxrave.domain.repository.LocalPlaylistRepository
-import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.utils.collectLatestResource
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.R
-import com.maxrave.simpmusic.tasker.CommonRunner
 import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
 import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
-import multiplatform.network.cmptoast.ToastDuration
-import multiplatform.network.cmptoast.ToastGravity
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 import kotlin.getValue
 
 enum class Command {
@@ -79,11 +70,8 @@ class ManagePlaylistActionHelper(config: TaskerPluginConfig<ManagePlaylistInput>
 
 
 //@AndroidEntryPoint
-class ManagePlaylistConfigActivity : ComponentActivity(), TaskerPluginConfig<ManagePlaylistInput>, KoinComponent {
+class ManagePlaylistConfigActivity : TaskerCommonConfigActivity<ManagePlaylistInput>() {
 
-
-    val localPlaylistRepository by inject<LocalPlaylistRepository>()
-    val playlistRepository by inject<PlaylistRepository>()
 
     override val context get() = applicationContext
 
@@ -169,9 +157,9 @@ class ManagePlaylistConfigActivity : ComponentActivity(), TaskerPluginConfig<Man
 
 
 
-class ManagePlaylistActionRunner : CommonRunner<ManagePlaylistInput, ManagePlaylistOutput>() {
+class ManagePlaylistActionRunner : TaskerCommonRunner<ManagePlaylistInput, ManagePlaylistOutput>() {
 
-    override suspend fun runWithMusicService(
+    override suspend fun runSuspended(
         context: Context,
         input: TaskerInput<ManagePlaylistInput>,
     ): TaskerPluginResult<ManagePlaylistOutput> {

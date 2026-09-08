@@ -2,7 +2,6 @@ package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
@@ -21,29 +20,23 @@ import com.maxrave.common.Config
 import com.maxrave.common.LOCAL_PLAYLIST_ID
 import com.maxrave.domain.mediaservice.handler.PlaylistType
 import com.maxrave.domain.mediaservice.handler.QueueData
-import com.maxrave.domain.repository.PlaylistRepository
 import com.maxrave.domain.utils.Resource
 import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import com.maxrave.logger.Logger
-import com.maxrave.simpmusic.tasker.CommonRunner
 import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
 import com.maxrave.simpmusic.R
-import kotlinx.coroutines.flow.collectLatest
-import multiplatform.network.cmptoast.ToastDuration
-import multiplatform.network.cmptoast.ToastGravity
-import multiplatform.network.cmptoast.showToast
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 import kotlin.getValue
 import kotlin.collections.first
 import com.maxrave.domain.data.model.browse.album.Track
-import com.maxrave.domain.repository.LocalPlaylistRepository
 import com.maxrave.domain.utils.toTrack
-import kotlinx.coroutines.flow.map
-import kotlin.getValue
+
+enum class QueueCommand {
+    SET_QUEUE_PLAYLIST,
+    EMPTY_QUEUE,
+}
 
 enum class AutoPlaylist(val title: String, val description: String? = null) {
     Liked("Liked Songs"),
@@ -56,25 +49,8 @@ enum class AutoPlaylist(val title: String, val description: String? = null) {
         "Artist Radio",
         "Start radio of the current artist or the artist with the id specified in the Argument input"
     );
-    /*
-    QuickPics("[Auto] Quick Picks", ""),
 
-    Recommendations("[Auto] Recommendations"),
-
-    KeepListing("[Auto] Keep Listening"),
-
-    ForgottenFavorites("[Auto] Forgotten Favorites"),
-
-    MostPlayed("[Auto] Most Played Songs", "Argument specify the number of days"),
-    Downloaded("[Auto] Downloaded Songs"),
-
-
-    ArtistSongs("[Auto] Artist Songs"),
-    AlbumSongs("[Auto] Album Songs");
-
-    */
-
-    fun toPair() = Pair("[Auto] " + title, description)
+    fun toPair() = Pair("[Auto] $title", description)
 }
 
 enum class SortType {
@@ -84,7 +60,14 @@ enum class SortType {
 
 
 @TaskerInputRoot
-class PlaylistInput @JvmOverloads constructor(
+class ManageQueueInput @JvmOverloads constructor(
+
+    @field:TaskerInputField(
+        "command",
+        labelResIdName = "command_name",
+        descriptionResIdName = "command_description"
+    ) var command: String? = null,
+
     @field:TaskerInputField(
         "playlistName",
         labelResIdName = "tasker_input_playlist_name",
@@ -111,45 +94,38 @@ class PlaylistInput @JvmOverloads constructor(
 )
 
 @TaskerOutputObject
-class PlaylistOutput(
-)
+class ManageQueueOutput ()
 
 
-class PlaylistActionHelper(config: TaskerPluginConfig<PlaylistInput>) :
-    TaskerPluginConfigHelper<PlaylistInput, PlaylistOutput, PlaylistActionRunner>(config) {
-    override val inputClass = PlaylistInput::class.java
-    override val outputClass = PlaylistOutput::class.java
-    override val runnerClass = PlaylistActionRunner::class.java
+class ManageQueueActionHelper(config: TaskerPluginConfig<ManageQueueInput>) :
+    TaskerPluginConfigHelper<ManageQueueInput, ManageQueueOutput, ManageQueueActionRunner>(config) {
+    override val inputClass = ManageQueueInput::class.java
+    override val outputClass = ManageQueueOutput::class.java
+    override val runnerClass = ManageQueueActionRunner::class.java
 }
 
 
 //@AndroidEntryPoint
-class PlaylistConfigActivity : ComponentActivity(), TaskerPluginConfig<PlaylistInput>, KoinComponent {
+class ManageQueueConfigActivity : TaskerCommonConfigActivity<ManageQueueInput>() {
 
-    val playlistRepository by inject<PlaylistRepository>()
-    val localPlaylistRepository by inject<LocalPlaylistRepository>()
-    /*
-    @Inject
-    lateinit var database: MusicDatabase
-    */
-
-    override val context get() = applicationContext
-
+    val command = mutableStateOf("")
     val playlistName = mutableStateOf("")
     val arg = mutableStateOf("")
     val sorting = mutableStateOf("")
     val limit = mutableStateOf("")
 
-    override fun assignFromInput(input: TaskerInput<PlaylistInput>) {
+    override fun assignFromInput(input: TaskerInput<ManageQueueInput>) {
+        command.value = input.regular.command ?: ""
         playlistName.value = input.regular.playlistName ?: AutoPlaylist.Liked.title
         arg.value = input.regular.arg ?: ""
         sorting.value = input.regular.sorting ?: SortType.Natural.toString()
         limit.value = input.regular.limit ?: ""
     }
 
-    override val inputForTasker: TaskerInput<PlaylistInput>
+    override val inputForTasker: TaskerInput<ManageQueueInput>
         get() = TaskerInput(
-            PlaylistInput(
+            ManageQueueInput(
+                command = command.value,
                 playlistName = playlistName.value,
                 arg = arg.value,
                 sorting = sorting.value,
@@ -157,9 +133,12 @@ class PlaylistConfigActivity : ComponentActivity(), TaskerPluginConfig<PlaylistI
             )
         )
 
-    private val taskerHelper by lazy { PlaylistActionHelper(this) }
+    private val taskerHelper by lazy { ManageQueueActionHelper(this) }
 
     private fun getPlaylistNames(): List<Pair<String, String?>> {
+
+        // TODO: this should be done in a suspend function because to load the items, YT is called and this can take a while. At the moment
+        // the UI is blocked until the playlists are loaded.
 
         val res: MutableList<Pair<String, String?>> = mutableListOf()
         runBlocking {
@@ -180,35 +159,45 @@ class PlaylistConfigActivity : ComponentActivity(), TaskerPluginConfig<PlaylistI
                 title = "Configure Playback Command action"
             ) {
                 TaskerConfigurationItem(
-                    inputLabel = stringResource(R.string.tasker_input_playlist_name),
-                    inputDescription = stringResource(R.string.tasker_input_playlist_name_description),
-                    playlistName,
-                    inputOptions = AutoPlaylist.entries.map { it.toPair() }.plus(Pair("---", null))
-                        .plus(getPlaylistNames()),
+                    inputLabel = stringResource(R.string.command_name),
+                    inputDescription = stringResource(R.string.command_description),
+                    command,
+                    inputOptions = QueueCommand.entries.map { c -> Pair(c.toString(), null) },
                     taskerVariables = taskerHelper.relevantVariables.toList()
                 )
 
-                TaskerConfigurationItem(
-                    inputLabel = stringResource(R.string.tasker_input_arg),
-                    inputDescription = stringResource(R.string.tasker_input_arg_description),
-                    arg,
-                    taskerVariables = taskerHelper.relevantVariables.toList()
-                )
+                if(command.value == QueueCommand.SET_QUEUE_PLAYLIST.toString()) {
+                    TaskerConfigurationItem(
+                        inputLabel = stringResource(R.string.tasker_input_playlist_name),
+                        inputDescription = stringResource(R.string.tasker_input_playlist_name_description),
+                        playlistName,
+                        inputOptions = AutoPlaylist.entries.map { it.toPair() }.plus(Pair("---", null))
+                            .plus(getPlaylistNames()),
+                        taskerVariables = taskerHelper.relevantVariables.toList()
+                    )
 
-                TaskerConfigurationItem(
-                    inputLabel = stringResource(R.string.tasker_input_sorting),
-                    inputDescription = stringResource(R.string.tasker_input_sorting_description),
-                    sorting,
-                    inputOptions = SortType.entries.map { Pair(it.toString(), null) },
-                    taskerVariables = taskerHelper.relevantVariables.toList()
-                )
+                    TaskerConfigurationItem(
+                        inputLabel = stringResource(R.string.tasker_input_arg),
+                        inputDescription = stringResource(R.string.tasker_input_arg_description),
+                        arg,
+                        taskerVariables = taskerHelper.relevantVariables.toList()
+                    )
 
-                TaskerConfigurationItem(
-                    inputLabel = stringResource(R.string.tasker_input_limit),
-                    inputDescription = stringResource(R.string.tasker_input_limit_description),
-                    limit,
-                    taskerVariables = taskerHelper.relevantVariables.toList()
-                )
+                    TaskerConfigurationItem(
+                        inputLabel = stringResource(R.string.tasker_input_sorting),
+                        inputDescription = stringResource(R.string.tasker_input_sorting_description),
+                        sorting,
+                        inputOptions = SortType.entries.map { Pair(it.toString(), null) },
+                        taskerVariables = taskerHelper.relevantVariables.toList()
+                    )
+
+                    TaskerConfigurationItem(
+                        inputLabel = stringResource(R.string.tasker_input_limit),
+                        inputDescription = stringResource(R.string.tasker_input_limit_description),
+                        limit,
+                        taskerVariables = taskerHelper.relevantVariables.toList()
+                    )
+                }
             }
         }
 
@@ -232,10 +221,10 @@ class TaskerQueueData(
     val playlistType: PlaylistType,
 )
 
-class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
+class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueueOutput>() {
 
 
-    suspend fun startMixPlaylist(
+    suspend fun getQueueForMixPlaylist(
         playlistName: String,
         arg: String?
     ): Pair<String, TaskerQueueData?> {
@@ -259,7 +248,7 @@ class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
     }
 
 
-    suspend fun startLocalPlaylist(
+    suspend fun getQueueForLocalPlaylist(
         playlistName: String,
         arg: String?
     ): Pair<String, TaskerQueueData?> {
@@ -281,7 +270,7 @@ class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
         return Pair("Error", null)
     }
 
-    suspend fun startLibraryPlaylist(
+    suspend fun getQueueForLibraryPlaylist(
         playlistName: String,
         arg: String?
     ): Pair<String, TaskerQueueData?> {
@@ -301,7 +290,7 @@ class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
         return Pair("Error", null)
     }
 
-    suspend fun startAutoPlaylist(
+    suspend fun getQueueForAutoPlaylist(
         playlistName: String,
         arg: String?
     ): Pair<String, TaskerQueueData?> {
@@ -355,12 +344,6 @@ class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
                     }
                 }
 
-                /*
-                val artistId =
-                    arg ?: musicService.database.song(musicService.currentMediaMetadata.value?.id)
-                        .firstOrNull()?.artists?.firstOrNull()?.id
-                */
-
                 if (artistId != null) {
                     Logger.d("Tasker", "ArtistID: ${artistId}")
 
@@ -411,11 +394,6 @@ class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
                     }
                 }
 
-                /*
-                val artistId =
-                    arg ?: musicService.database.song(musicService.currentMediaMetadata.value?.id)
-                        .firstOrNull()?.artists?.firstOrNull()?.id
-                */
 
                 if (artistId != null) {
                     Logger.d("Tasker", "ArtistID: ${artistId}")
@@ -491,35 +469,50 @@ class PlaylistActionRunner : CommonRunner<PlaylistInput, PlaylistOutput>() {
         return Pair("Error", null)
     }
 
-    override suspend fun runWithMusicService(
+    override suspend fun runSuspended(
         context: Context,
-        input: TaskerInput<PlaylistInput>,
-    ): TaskerPluginResult<PlaylistOutput> {
+        input: TaskerInput<ManageQueueInput>,
+    ): TaskerPluginResult<ManageQueueOutput> {
+
+        val command = input.regular.command ?: QueueCommand.EMPTY_QUEUE
 
         val playlistName = input.regular.playlistName ?: ""
         val arg = input.regular.arg
 
         Logger.d("Tasker", "Starting playlist: ${playlistName} with arg: ${arg}")
 
-        val tracksResult = when {
-            playlistName.startsWith("[Auto]") -> {
-                val autoPlaylistName = playlistName.removePrefix("[Auto] ").trim()
-                startAutoPlaylist(autoPlaylistName, arg)
-            }
-            playlistName.startsWith("[YT]") -> {
-                val libraryPlaylistName = playlistName.removePrefix("[YT] ").trim()
-                startLibraryPlaylist(libraryPlaylistName, arg)
-            }
-            playlistName.startsWith("[YT Mix]") -> {
-                val mixPlaylistName = playlistName.removePrefix("[YT Mix] ").trim()
-                startMixPlaylist(mixPlaylistName, arg)
-            }
-            playlistName.startsWith("[Local]") -> {
-                val localPlaylistName = playlistName.removePrefix("[Local] ").trim()
-                startLocalPlaylist(localPlaylistName, arg)
-            }
-            else -> {
-                Pair("Error: Unknown playlist type", null)
+        val tracksResult = if(command == QueueCommand.EMPTY_QUEUE.toString()) {
+            Pair("Success", TaskerQueueData(
+                listTracks = emptyList(),
+                playlistId = null,
+                playlistType = PlaylistType.PLAYLIST,
+            ))
+        } else {
+
+            when {
+                playlistName.startsWith("[Auto]") -> {
+                    val autoPlaylistName = playlistName.removePrefix("[Auto] ").trim()
+                    getQueueForAutoPlaylist(autoPlaylistName, arg)
+                }
+
+                playlistName.startsWith("[YT]") -> {
+                    val libraryPlaylistName = playlistName.removePrefix("[YT] ").trim()
+                    getQueueForLibraryPlaylist(libraryPlaylistName, arg)
+                }
+
+                playlistName.startsWith("[YT Mix]") -> {
+                    val mixPlaylistName = playlistName.removePrefix("[YT Mix] ").trim()
+                    getQueueForMixPlaylist(mixPlaylistName, arg)
+                }
+
+                playlistName.startsWith("[Local]") -> {
+                    val localPlaylistName = playlistName.removePrefix("[Local] ").trim()
+                    getQueueForLocalPlaylist(localPlaylistName, arg)
+                }
+
+                else -> {
+                    Pair("Error: Unknown playlist type", null)
+                }
             }
         }
 
