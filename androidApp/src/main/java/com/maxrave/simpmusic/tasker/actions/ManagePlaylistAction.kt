@@ -1,12 +1,9 @@
 package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
-import android.os.Bundle
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.stringResource
-import com.joaomgcd.taskerpluginlibrary.SimpleResultError
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfig
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigHelper
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInput
@@ -18,18 +15,26 @@ import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResult
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultErrorWithOutput
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultSucess
 import com.maxrave.domain.utils.collectLatestResource
+import com.maxrave.logger.Logger
+import com.maxrave.simpmusic.R
+import com.maxrave.simpmusic.tasker.ConfigUIChoiceOption
+import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
+import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
-import com.maxrave.logger.Logger
-import com.maxrave.simpmusic.R
-import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
-import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
-import kotlin.getValue
 
-enum class Command {
-    ADD_SONG_TO_PLAYLIST,
-    REMOVE_SONG_TO_PLAYLIST
+enum class PlaylistCommand(val title: String, val description: String? = null) {
+    ADD_SONG_TO_PLAYLIST("Add Song to Playlist", "Adds the specified song to the given playlist"),
+    REMOVE_SONG_FROM_PLAYLIST("Remove Song from Playlist", "Removes the specified song from the given playlist");
+
+    fun toConfigUIChoiceOption(): ConfigUIChoiceOption {
+        return ConfigUIChoiceOption(
+            id = this.name,
+            value = this.title,
+            description = this.description
+        )
+    }
 }
 
 @TaskerInputRoot
@@ -72,9 +77,6 @@ class ManagePlaylistActionHelper(config: TaskerPluginConfig<ManagePlaylistInput>
 //@AndroidEntryPoint
 class ManagePlaylistConfigActivity : TaskerCommonConfigActivity<ManagePlaylistInput>() {
 
-
-    override val context get() = applicationContext
-
     val playlistName = mutableStateOf("")
     val songId = mutableStateOf("")
     val command = mutableStateOf("")
@@ -95,22 +97,10 @@ class ManagePlaylistConfigActivity : TaskerCommonConfigActivity<ManagePlaylistIn
             )
         )
 
-    private val taskerHelper by lazy { ManagePlaylistActionHelper(this) }
+    override val taskerHelper by lazy { ManagePlaylistActionHelper(this) }
 
-    private fun getPlaylistNames(): List<Pair<String, String?>> {
-        val res: MutableList<Pair<String, String?>> = mutableListOf()
-        runBlocking {
-            res += (playlistRepository.getLibraryPlaylist().first() ?: emptyList()).map { Pair("[YT] " + it.title, null) }
-            res += Pair("---", null)
-            res += (localPlaylistRepository.getAllLocalPlaylists().first() ?: emptyList()).map { Pair("[Local] " + it.title, null) }        }
-        return res
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-
-
-        super.onCreate(savedInstanceState)
-        setContent {
+    @Composable
+    override fun ConfigurationUI(){
             TaskerConfigurationScreen(
                 title = "Configure Playback Command action"
             ) {
@@ -119,7 +109,7 @@ class ManagePlaylistConfigActivity : TaskerCommonConfigActivity<ManagePlaylistIn
                     inputLabel = stringResource(R.string.command_name),
                     inputDescription = stringResource(R.string.command_description),
                     command,
-                    inputOptions = Command.entries.map { c -> Pair(c.toString(), null) },
+                    inputOptions = PlaylistCommand.entries.map { it.toConfigUIChoiceOption() },
                     taskerVariables = taskerHelper.relevantVariables.toList()
                 )
 
@@ -139,19 +129,16 @@ class ManagePlaylistConfigActivity : TaskerCommonConfigActivity<ManagePlaylistIn
                 )
 
             }
-        }
 
-        taskerHelper.onCreate()
-        //taskerHelper.finishForTasker()
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                val result = taskerHelper.onBackPressed()
-                if (result is SimpleResultError) {
-                    Logger.w("Tasker", "Settings are not valid:\n\n${result.message}")
-                }
-                if (result.success) finish()
-            }
-        })
+    }
+
+    private fun getPlaylistNames(): List<ConfigUIChoiceOption> {
+        val res: MutableList<ConfigUIChoiceOption> = mutableListOf()
+        runBlocking {
+            res += (playlistRepository.getLibraryPlaylist().first() ?: emptyList()).map { ConfigUIChoiceOption("[YT] " + it.title) }
+            res += ConfigUIChoiceOption("---", null)
+            res += (localPlaylistRepository.getAllLocalPlaylists().first() ?: emptyList()).map { ConfigUIChoiceOption("[Local] " + it.title) }        }
+        return res
     }
 }
 
@@ -165,17 +152,22 @@ class ManagePlaylistActionRunner : TaskerCommonRunner<ManagePlaylistInput, Manag
     ): TaskerPluginResult<ManagePlaylistOutput> {
 
         val playlistName = input.regular.playlistName ?: ""
-        val command = input.regular.command ?: Command.ADD_SONG_TO_PLAYLIST
+        val command = input.regular.command ?: PlaylistCommand.ADD_SONG_TO_PLAYLIST
         val songId = input.regular.songId.takeIf { it != "" } ?: mediaPlayerHandler.nowPlaying.value?.mediaId
 
         songRepository.getSongById(songId!!).firstOrNull()?.let { song ->
             when {
                 playlistName.startsWith("[YT]") -> {
                     val ytPlaylistName = playlistName.removePrefix("[YT] ").trim()
-                    val playlist = playlistRepository.getLibraryPlaylist().first()?.first { it.title == ytPlaylistName }
-                    when(command) {
-                        Command.ADD_SONG_TO_PLAYLIST.toString() -> {
-                            localPlaylistRepository.addYouTubePlaylistItem(playlist?.browseId ?: "", song.videoId).collectLatestResource(
+                    val playlist = playlistRepository.getLibraryPlaylist().firstOrNull()?.firstOrNull { it.title == ytPlaylistName }
+                    if (playlist == null) {
+                        Logger.w("Tasker", "YouTube playlist not found: $ytPlaylistName")
+                        return TaskerPluginResultErrorWithOutput(1, "YouTube playlist not found: $ytPlaylistName")
+                    }
+
+                    when (command) {
+                        PlaylistCommand.ADD_SONG_TO_PLAYLIST.toString() -> {
+                            localPlaylistRepository.addYouTubePlaylistItem(playlist.browseId, song.videoId).collectLatestResource(
                                 onSuccess = {
                                     Logger.i("Tasker", "Add to YT Playlist result: ${it}")
                                 },
@@ -185,18 +177,23 @@ class ManagePlaylistActionRunner : TaskerCommonRunner<ManagePlaylistInput, Manag
                             )
                         }
 
-                        Command.REMOVE_SONG_TO_PLAYLIST.toString() -> {
-                            TODO("Not implemented. Not supported by the playlistRepository")
-                            Logger.e("Tasker", "Remove from YT Playlist not implemented!. However it is possible to sync the YT playlist locally and then add/remove song to the local playlist")
+                        PlaylistCommand.REMOVE_SONG_FROM_PLAYLIST.toString() -> {
+                            // Removing from a YouTube playlist is currently not supported by the public playlistRepository.
+                            Logger.e("Tasker", "Remove from YT Playlist not implemented. Consider syncing the playlist locally then modifying it.")
+                            return TaskerPluginResultErrorWithOutput(1, "Remove from YouTube playlist is not supported")
                         }
                     }
-
                 }
                 playlistName.startsWith("[Local]") -> {
                     val localPlaylistName = playlistName.removePrefix("[Local] ").trim()
-                    val playlist = localPlaylistRepository.getAllLocalPlaylists().first().first { it.title == localPlaylistName }
-                    when(command) {
-                        Command.ADD_SONG_TO_PLAYLIST.toString() -> {
+                    val allLocal = localPlaylistRepository.getAllLocalPlaylists().firstOrNull() ?: emptyList()
+                    val playlist = allLocal.firstOrNull { it.title == localPlaylistName }
+                    if (playlist == null) {
+                        Logger.w("Tasker", "Local playlist not found: $localPlaylistName")
+                        return TaskerPluginResultErrorWithOutput(1, "Local playlist not found: $localPlaylistName")
+                    }
+                    when (command) {
+                        PlaylistCommand.ADD_SONG_TO_PLAYLIST.toString() -> {
                             localPlaylistRepository.addTrackToLocalPlaylist(playlist.id, song, "Done", "YT Done", "Error").collectLatestResource(
                                 onSuccess = {
                                     Logger.i("Tasker", "Add to Local Playlist result: ${it}")
@@ -207,10 +204,10 @@ class ManagePlaylistActionRunner : TaskerCommonRunner<ManagePlaylistInput, Manag
                             )
                         }
 
-                        Command.REMOVE_SONG_TO_PLAYLIST.toString() -> {
+                        PlaylistCommand.REMOVE_SONG_FROM_PLAYLIST.toString() -> {
                             localPlaylistRepository.removeTrackFromLocalPlaylist(playlist.id, song, "Done", "YT Done", "Error").collectLatestResource(
                                 onSuccess = {
-                                    Logger.i("Tasker", "Remove frmo Local Playlist result: ${it}")
+                                    Logger.i("Tasker", "Remove from Local Playlist result: ${it}")
                                 },
                                 onError = {
                                     Logger.e("Tasker", "Remove from Local Playlist result: ${it}")
@@ -225,7 +222,6 @@ class ManagePlaylistActionRunner : TaskerCommonRunner<ManagePlaylistInput, Manag
             }
 
         }
-
 
         return TaskerPluginResultSucess(
             ManagePlaylistOutput(executed = true)

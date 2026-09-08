@@ -1,12 +1,9 @@
 package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
-import android.os.Bundle
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.stringResource
-import com.joaomgcd.taskerpluginlibrary.SimpleResultError
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfig
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigHelper
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInput
@@ -95,13 +92,11 @@ class GetSongInfoConfigActivity : TaskerCommonConfigActivity<GetSongInfoInput>()
     override val inputForTasker: TaskerInput<GetSongInfoInput>
         get() = TaskerInput(GetSongInfoInput(songId = songId.value))
 
-    private val taskerHelper by lazy { GetSongInfoActionHelper(this) }
+    override val taskerHelper by lazy { GetSongInfoActionHelper(this) }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-
-        super.onCreate(savedInstanceState)
-        setContent {
-            TaskerConfigurationScreen(
+    @Composable
+    override fun ConfigurationUI() {
+        TaskerConfigurationScreen(
                 title = "Configure Song Info action"
             ) {
                 TaskerConfigurationItem(
@@ -112,19 +107,6 @@ class GetSongInfoConfigActivity : TaskerCommonConfigActivity<GetSongInfoInput>()
                 )
             }
         }
-
-        taskerHelper.onCreate()
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                val result = taskerHelper.onBackPressed()
-                if (result is SimpleResultError) {
-                    Logger.d("Tasker", "Settings are not valid:\n\n${result.message}")
-                }
-                if (result.success) finish()
-            }
-        })
-    }
-
 }
 
 
