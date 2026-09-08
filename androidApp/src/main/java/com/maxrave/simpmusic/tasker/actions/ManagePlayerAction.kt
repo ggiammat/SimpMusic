@@ -1,12 +1,9 @@
 package com.maxrave.simpmusic.tasker.actions
 
 import android.content.Context
-import android.os.Bundle
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.stringResource
-import com.joaomgcd.taskerpluginlibrary.SimpleResultError
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfig
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigHelper
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInput
@@ -17,21 +14,29 @@ import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputVariable
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResult
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultErrorWithOutput
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultSucess
+import com.maxrave.simpmusic.R
+import com.maxrave.simpmusic.tasker.ConfigUIChoiceOption
 import com.maxrave.simpmusic.tasker.TaskerConfigurationItem
 import com.maxrave.simpmusic.tasker.TaskerConfigurationScreen
 import kotlinx.coroutines.flow.firstOrNull
-import com.maxrave.logger.Logger
-import com.maxrave.simpmusic.R
 
-enum class Commands {
-    TOGGLE_PLAY_PAUSE,
-    PLAY,
-    STOP,
-    NEXT_SONG,
-    PREVIOUS_SONG,
-    LIKE_SONG,
-    UNLIKE_SONG,
-    TOGGLE_LIKE,
+enum class PlayerCommand(val title: String, val description: String? = null) {
+    TOGGLE_PLAY_PAUSE("Play/Pause", "Toggles the playback state of the player"),
+    PLAY("Play", "Plays the current track"),
+    STOP("Stop", "Stops the player"),
+    NEXT_SONG("Next Song", "Skips to the next track"),
+    PREVIOUS_SONG("Previous Song", "Skips to the previous track"),
+    LIKE_SONG("Like Song", "Likes the current song"),
+    UNLIKE_SONG("Unlike Song", "Unlikes the current song"),
+    TOGGLE_LIKE("Toggle Like", "Toggles the like status of the current song");
+
+    fun toConfigUIChoiceOption(): ConfigUIChoiceOption {
+        return ConfigUIChoiceOption(
+            id = this.name,
+            value = this.title,
+            description = this.description
+        )
+    }
 }
 
 @TaskerInputRoot
@@ -45,7 +50,8 @@ class ManagePlayerInput @JvmOverloads constructor(
 
 @TaskerOutputObject
 class ManagePlayerOutput(
-    @get:TaskerOutputVariable("executed",
+    @get:TaskerOutputVariable(
+        "executed",
         labelResIdName = "out_executed_name",
         htmlLabelResIdName = "out_executed_description"
     ) var executed: Boolean?,
@@ -69,36 +75,21 @@ class ManagePlayerConfigActivity : TaskerCommonConfigActivity<ManagePlayerInput>
     override val inputForTasker: TaskerInput<ManagePlayerInput>
         get() = TaskerInput(ManagePlayerInput(command = command.value))
 
-    private val taskerHelper by lazy { ManagePlayerActionHelper(this) }
+    override val taskerHelper by lazy { ManagePlayerActionHelper(this) }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-
-        super.onCreate(savedInstanceState)
-        setContent {
-            TaskerConfigurationScreen(
-                title = "Configure Manage Player action"
-            ) {
-                TaskerConfigurationItem(
-                    inputLabel = stringResource(R.string.command_name),
-                    inputDescription = stringResource(R.string.command_description),
-                    command,
-                    inputOptions = Commands.entries.map { c -> Pair(c.toString(), null) },
-                    taskerVariables = taskerHelper.relevantVariables.toList()
-                )
-            }
+    @Composable
+    override fun ConfigurationUI() {
+        TaskerConfigurationScreen(
+            title = "Configure Manage Player action"
+        ) {
+            TaskerConfigurationItem(
+                inputLabel = stringResource(R.string.command_name),
+                inputDescription = stringResource(R.string.command_description),
+                command,
+                inputOptions = PlayerCommand.entries.map { it.toConfigUIChoiceOption() },
+                taskerVariables = taskerHelper.relevantVariables.toList()
+            )
         }
-
-        taskerHelper.onCreate()
-        //taskerHelper.finishForTasker()
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                val result = taskerHelper.onBackPressed()
-                if (result is SimpleResultError) {
-                    Logger.w("Tasker","Settings are not valid:\n\n${result.message}")
-                }
-                if (result.success) finish()
-            }
-        })
     }
 }
 
@@ -111,14 +102,14 @@ class ManagePlayerActionRunner : TaskerCommonRunner<ManagePlayerInput, ManagePla
     ): TaskerPluginResult<ManagePlayerOutput> {
 
         var executed = false
-        val command: Commands
+        val command: PlayerCommand
 
 
 
 
-        try{
-            command = Commands.valueOf(input.regular.command ?: "")
-        }catch (e: Exception){
+        try {
+            command = PlayerCommand.valueOf(input.regular.command ?: "")
+        } catch (e: Exception) {
             return TaskerPluginResultErrorWithOutput(
                 code = 1,
                 message = "Invalid command (${input.regular.command})"
@@ -127,39 +118,43 @@ class ManagePlayerActionRunner : TaskerCommonRunner<ManagePlayerInput, ManagePla
 
         when (command) {
 
-            Commands.TOGGLE_LIKE -> {
+            PlayerCommand.TOGGLE_LIKE -> {
                 mediaPlayerHandler.toggleLike()
                 executed = true
             }
 
-            Commands.LIKE_SONG -> {
-                // apparently the like() method does not work
-                // mediaPlayerHandler.like(true)
+            PlayerCommand.LIKE_SONG -> {
+                // apparently the like() method does not work so we use the toggleLike()
                 val currentSongId = mediaPlayerHandler.nowPlaying.value?.mediaId
-                if(currentSongId != null) {
+                if (currentSongId != null) {
                     songRepository.getSongById(currentSongId).firstOrNull()?.let { song ->
-                        if(!song.liked) {
+                        if (!song.liked) {
                             mediaPlayerHandler.toggleLike()
+                            executed = true
+                        } else {
+                            executed = false
                         }
                     }
                 }
             }
 
-            Commands.UNLIKE_SONG -> {
-                // apparently the like() method does not work
-                // mediaPlayerHandler.like(false)
+            PlayerCommand.UNLIKE_SONG -> {
+                // apparently the like() method does not work so we use the toggleLike()
                 val currentSongId = mediaPlayerHandler.nowPlaying.value?.mediaId
-                if(currentSongId != null) {
+                if (currentSongId != null) {
                     songRepository.getSongById(currentSongId).firstOrNull()?.let { song ->
-                        if(song.liked) {
+                        if (song.liked) {
                             mediaPlayerHandler.toggleLike()
+                            executed = true
+                        } else {
+                            executed = false
                         }
                     }
                 }
             }
 
-            Commands.TOGGLE_PLAY_PAUSE -> {
-                if(mediaPlayerHandler.player.isPlaying) {
+            PlayerCommand.TOGGLE_PLAY_PAUSE -> {
+                if (mediaPlayerHandler.player.isPlaying) {
                     mediaPlayerHandler.player.pause()
                 } else {
                     mediaPlayerHandler.player.play()
@@ -167,25 +162,25 @@ class ManagePlayerActionRunner : TaskerCommonRunner<ManagePlayerInput, ManagePla
                 executed = true
             }
 
-            Commands.PLAY -> {
+            PlayerCommand.PLAY -> {
                 mediaPlayerHandler.player.play()
                 executed = true
             }
 
-            Commands.STOP -> {
+            PlayerCommand.STOP -> {
                 mediaPlayerHandler.player.pause()
                 executed = true
             }
 
-            Commands.NEXT_SONG -> {
-                if(mediaPlayerHandler.player.hasNextMediaItem()) {
-                   mediaPlayerHandler.player.seekToNext()
+            PlayerCommand.NEXT_SONG -> {
+                if (mediaPlayerHandler.player.hasNextMediaItem()) {
+                    mediaPlayerHandler.player.seekToNext()
                     executed = true
                 }
             }
 
-            Commands.PREVIOUS_SONG -> {
-                if(mediaPlayerHandler.player.hasPreviousMediaItem()) {
+            PlayerCommand.PREVIOUS_SONG -> {
+                if (mediaPlayerHandler.player.hasPreviousMediaItem()) {
                     mediaPlayerHandler.player.seekToPreviousMediaItem()
                     executed = true
                 }

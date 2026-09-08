@@ -318,7 +318,7 @@
             android:name=".tasker.actions.GetSongInfoConfigActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="Song Info">
+            android:label="Get Song Info">
             <intent-filter>
                 <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
             </intent-filter>

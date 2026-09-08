@@ -59,9 +59,15 @@ fun TextFieldWithTaskerVariables(text: MutableState<String>, options: List<Strin
     )
 }
 
+data class ConfigUIChoiceOption(
+    val id: String,
+    val value: String? = null,
+    val description: String? = null
+)
+
 @Composable
 fun ChoicesForString(
-    radioOptions: List<Pair<String, String?>>,
+    radioOptions: List<ConfigUIChoiceOption>,
     selectedOption: MutableState<String>,
     modifier: Modifier = Modifier
 ) {
@@ -73,29 +79,29 @@ fun ChoicesForString(
                     .height(42.dp)
                     .fillMaxWidth()
                     .selectable(
-                        selected = (text.first == selectedOption.value),
-                        onClick = { selectedOption.value = text.first },
+                        selected = (text.id == selectedOption.value),
+                        onClick = { selectedOption.value = text.id },
                         role = Role.RadioButton
                     )
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (text.first == "---") {
+                if (text.id == "---" || text.value == "---") {
                     HorizontalDivider(thickness = 1.dp)
                 } else {
                     RadioButton(
-                        selected = (text.first == selectedOption.value),
+                        selected = (text.id == selectedOption.value),
                         onClick = null // null recommended for accessibility with screen readers
                     )
                     Column {
                         Text(
-                            text = text.first,
+                            text = text.value ?: text.id,
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(start = 16.dp)
                         )
-                        if (text.second != null && text.second != "") {
+                        if (text.description != null && text.description != "") {
                             Text(
-                                text = text.second ?: "",
+                                text = text.description ?: "",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontStyle = FontStyle.Italic,
                                 modifier = Modifier.padding(start = 16.dp)
@@ -149,7 +155,7 @@ fun TaskerConfigurationItem(
     inputLabel: String,
     inputDescription: String,
     inputValue: MutableState<String>,
-    inputOptions: List<Pair<String, String?>> = listOf(),
+    inputOptions: List<ConfigUIChoiceOption> = listOf(),
     taskerVariables: List<String> = listOf(),
     startWitFreeTextEnabled: Boolean = false
 ) {
@@ -167,10 +173,14 @@ fun TaskerConfigurationItem(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold )
 
-            Text(text = inputDescription,
+            Text(
+                text = inputDescription,
                 style = MaterialTheme.typography.bodyMedium,
                 fontStyle = FontStyle.Italic,
-                color = Color.Gray )
+                color = Color.Gray,
+                modifier = Modifier.fillMaxWidth(),
+                softWrap = true
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth()
@@ -234,9 +244,9 @@ fun TaskerConfigurationScreenPreview() {
             inputDescription = "How to set the Like",
             remember { mutableStateOf("") },
             inputOptions = listOf(
-                Pair("Like", "like description"),
-                Pair("Unlike", null),
-                Pair("Toggle", "")
+                ConfigUIChoiceOption("Like", "like description"),
+                ConfigUIChoiceOption("Unlike", null),
+                ConfigUIChoiceOption("Toggle", "")
             ),
             taskerVariables = listOf("%name", "%asd", "%asd2")
         )
@@ -245,12 +255,12 @@ fun TaskerConfigurationScreenPreview() {
             inputLabel = "Command",
             inputDescription = "The playback command to execute",
             remember { mutableStateOf("") },
-            inputOptions = listOf(
-                Pair("PLAY", null),
-                Pair("STOP", null),
-                Pair("---", null),
-                Pair("ENABLE SHUFFLE", null),
-                Pair("NEXT SONG", null)
+                inputOptions = listOf(
+                ConfigUIChoiceOption("PLAY", null),
+                ConfigUIChoiceOption("STOP", null),
+                ConfigUIChoiceOption("---", null),
+                ConfigUIChoiceOption("ENABLE SHUFFLE", null),
+                ConfigUIChoiceOption("NEXT SONG", null)
             ),
             taskerVariables = listOf("%name", "%asd", "%asd2"),
             startWitFreeTextEnabled = false

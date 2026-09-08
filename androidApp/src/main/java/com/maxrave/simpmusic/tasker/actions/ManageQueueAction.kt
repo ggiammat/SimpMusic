@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.stringResource
 import com.joaomgcd.taskerpluginlibrary.SimpleResultError
@@ -32,10 +33,26 @@ import kotlin.getValue
 import kotlin.collections.first
 import com.maxrave.domain.data.model.browse.album.Track
 import com.maxrave.domain.utils.toTrack
+import com.maxrave.simpmusic.tasker.ConfigUIChoiceOption
 
-enum class QueueCommand {
-    SET_QUEUE_PLAYLIST,
-    EMPTY_QUEUE,
+enum class QueueCommand(val title: String, val description: String? = null) {
+    SET_QUEUE_PLAYLIST(
+        "Set Queue Playlist",
+        "Sets the queue to the specified playlist and starts playback from the first track"
+    ),
+    EMPTY_QUEUE(
+        "Empty Queue",
+        "Clears the current queue"
+    );
+
+
+    fun toConfigUIChoiceOption(): ConfigUIChoiceOption {
+        return ConfigUIChoiceOption(
+            id = this.name,
+            value = this.title,
+            description = this.description
+        )
+    }
 }
 
 enum class AutoPlaylist(val title: String, val description: String? = null) {
@@ -43,19 +60,32 @@ enum class AutoPlaylist(val title: String, val description: String? = null) {
     DownloadedSongs("Downloaded Songs"),
     MostPlayed("Most Played"),
     RecentPlayed("Recent Played"),
-    ArtistSongs("Artist Songs"),
-    AlbumSongs("Album Songs"),
+    ArtistSongs("Current Artist's Songs"),
+    AlbumSongs("Current Album Songs"),
     ArtistRadio(
-        "Artist Radio",
-        "Start radio of the current artist or the artist with the id specified in the Argument input"
-    );
+        "Artist's Radio",
+        "Start radio of the current artist or the artist with the id specified in the Argument input");
 
-    fun toPair() = Pair("[Auto] $title", description)
+    fun toConfigUIChoiceOption(): ConfigUIChoiceOption {
+        return ConfigUIChoiceOption(
+            id = "[Auto] ${this.name}",
+            value = this.title,
+            description = this.description
+        )
+    }
 }
 
-enum class SortType {
-    Natural,
-    Shuffled
+enum class SortType(val title: String, val description: String? = null) {
+    Natural("Natural", "Keeps the order of the playlist as is"),
+    Shuffled("Shuffled", "Shuffles the tracks in the playlist");
+
+    fun toConfigUIChoiceOption(): ConfigUIChoiceOption {
+        return ConfigUIChoiceOption(
+            id = this.name,
+            value = this.title,
+            description = this.description
+        )
+    }
 }
 
 
@@ -133,28 +163,48 @@ class ManageQueueConfigActivity : TaskerCommonConfigActivity<ManageQueueInput>()
             )
         )
 
-    private val taskerHelper by lazy { ManageQueueActionHelper(this) }
+    override val taskerHelper by lazy { ManageQueueActionHelper(this) }
 
-    private fun getPlaylistNames(): List<Pair<String, String?>> {
-
-        // TODO: this should be done in a suspend function because to load the items, YT is called and this can take a while. At the moment
-        // the UI is blocked until the playlists are loaded.
-
-        val res: MutableList<Pair<String, String?>> = mutableListOf()
+    /**
+     * Loads playlist names for the UI picker. This is currently synchronous and may block the UI briefly
+     * while repositories fetch remote data. Keep calls defensive: any repository failure yields an empty list
+     * rather than crashing the configuration screen.
+     */
+    private fun getPlaylistNames(): List<ConfigUIChoiceOption> {
+        val res: MutableList<ConfigUIChoiceOption> = mutableListOf()
         runBlocking {
-            res += (playlistRepository.getLibraryPlaylist().first() ?: emptyList()).map { Pair("[YT] " + it.title, null) }
-            res += Pair("---", null)
-            res += (playlistRepository.getMixedForYou().first() ?: emptyList()).map{ Pair("[YT Mix] " + it.title, null)}
-            res += Pair("---", null)
-            res += (localPlaylistRepository.getAllLocalPlaylists().first() ?: emptyList()).map { Pair("[Local] " + it.title, null) }
+            try {
+                val library = playlistRepository.getLibraryPlaylist().firstOrNull() ?: emptyList()
+                res += library.map { ConfigUIChoiceOption("[YT] " + it.title, null) }
+            } catch (t: Throwable) {
+                Logger.w("Tasker", "Failed to load library playlists: ${t.message}")
+            }
+
+            res += ConfigUIChoiceOption("---")
+
+            try {
+                val mixes = playlistRepository.getMixedForYou().firstOrNull() ?: emptyList()
+                res += mixes.map { ConfigUIChoiceOption("[YT Mix] " + it.title, null) }
+            } catch (t: Throwable) {
+                Logger.w("Tasker", "Failed to load mix playlists: ${t.message}")
+            }
+
+            res += ConfigUIChoiceOption("---")
+
+            try {
+                val local = localPlaylistRepository.getAllLocalPlaylists().firstOrNull() ?: emptyList()
+                res += local.map { ConfigUIChoiceOption("[Local] " + it.title, null) }
+            } catch (t: Throwable) {
+                Logger.w("Tasker", "Failed to load local playlists: ${t.message}")
+            }
         }
         return res
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
 
-        super.onCreate(savedInstanceState)
-        setContent {
+
+    @Composable
+    override fun ConfigurationUI() {
             TaskerConfigurationScreen(
                 title = "Configure Playback Command action"
             ) {
@@ -162,7 +212,7 @@ class ManageQueueConfigActivity : TaskerCommonConfigActivity<ManageQueueInput>()
                     inputLabel = stringResource(R.string.command_name),
                     inputDescription = stringResource(R.string.command_description),
                     command,
-                    inputOptions = QueueCommand.entries.map { c -> Pair(c.toString(), null) },
+                    inputOptions = QueueCommand.entries.map { it.toConfigUIChoiceOption() },
                     taskerVariables = taskerHelper.relevantVariables.toList()
                 )
 
@@ -171,7 +221,7 @@ class ManageQueueConfigActivity : TaskerCommonConfigActivity<ManageQueueInput>()
                         inputLabel = stringResource(R.string.tasker_input_playlist_name),
                         inputDescription = stringResource(R.string.tasker_input_playlist_name_description),
                         playlistName,
-                        inputOptions = AutoPlaylist.entries.map { it.toPair() }.plus(Pair("---", null))
+                        inputOptions = AutoPlaylist.entries.map { it.toConfigUIChoiceOption() }.plus(ConfigUIChoiceOption("---"))
                             .plus(getPlaylistNames()),
                         taskerVariables = taskerHelper.relevantVariables.toList()
                     )
@@ -187,7 +237,7 @@ class ManageQueueConfigActivity : TaskerCommonConfigActivity<ManageQueueInput>()
                         inputLabel = stringResource(R.string.tasker_input_sorting),
                         inputDescription = stringResource(R.string.tasker_input_sorting_description),
                         sorting,
-                        inputOptions = SortType.entries.map { Pair(it.toString(), null) },
+                        inputOptions = SortType.entries.map { it.toConfigUIChoiceOption() },
                         taskerVariables = taskerHelper.relevantVariables.toList()
                     )
 
@@ -198,53 +248,53 @@ class ManageQueueConfigActivity : TaskerCommonConfigActivity<ManageQueueInput>()
                         taskerVariables = taskerHelper.relevantVariables.toList()
                     )
                 }
-            }
-        }
 
-        taskerHelper.onCreate()
-        //taskerHelper.finishForTasker()
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                val result = taskerHelper.onBackPressed()
-                if (result is SimpleResultError) {
-                    Logger.d("Tasker", "Settings are not valid:\n\n${result.message}")
-                }
-                if (result.success) finish()
-            }
-        })
+        }
     }
 }
 
 class TaskerQueueData(
     val listTracks: List<Track>,
     val playlistId: String?,
+    val playlistName: String? = null,
     val playlistType: PlaylistType,
 )
 
 class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueueOutput>() {
 
 
+    /**
+     * Resolve a mixed "For You" playlist by title. Returns (message, data) pair where data is null on error.
+     */
     suspend fun getQueueForMixPlaylist(
         playlistName: String,
         arg: String?
     ): Pair<String, TaskerQueueData?> {
-        val playlist = playlistRepository.getMixedForYou().first()?.first { it.title == playlistName }
-        if(playlist != null) {
-            playlistRepository.getPlaylistData(playlist.browseId, "view_count").first().let { pd ->
-                if(pd.data != null) {
+        try {
+            val mixed = playlistRepository.getMixedForYou().firstOrNull() ?: emptyList()
+            val playlist = mixed.firstOrNull { it.title == playlistName }
+            if (playlist == null) return Pair("Playlist not found: $playlistName", null)
 
-                    return TaskerQueueData(
-                        listTracks = pd.data!!.first.tracks,
-                        playlistId = pd.data!!.first.id,
+            val pd = playlistRepository.getPlaylistData(playlist.browseId, "view_count").firstOrNull()
+            val payload = pd?.data?.first
+            if (payload != null) {
+                val tracks = payload.tracks ?: emptyList()
+                if (tracks.isEmpty()) return Pair("Playlist is empty", null)
+                return Pair(
+                    "Success",
+                    TaskerQueueData(
+                        listTracks = tracks,
+                        playlistId = payload.id,
+                        playlistName = payload.title,
                         playlistType = PlaylistType.PLAYLIST,
-                    ).let { data -> Pair("Success", data) }
-
-                }
+                    )
+                )
             }
-        } else {
-            return Pair("Playlist not found", null)
+            return Pair("Failed to load playlist data", null)
+        } catch (t: Throwable) {
+            Logger.e("Tasker", "Error fetching mix playlist: ${t.message}")
+            return Pair("Exception: ${t.localizedMessage}", null)
         }
-        return Pair("Error", null)
     }
 
 
@@ -252,22 +302,29 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
         playlistName: String,
         arg: String?
     ): Pair<String, TaskerQueueData?> {
+        try {
+            Logger.d("Tasker", "PL NAME: $playlistName")
+            val all = localPlaylistRepository.getAllLocalPlaylists().firstOrNull() ?: emptyList()
+            all.forEach { Logger.d("Tasker", "PL ${it.title}") }
+            val playlist = all.firstOrNull { it.title == playlistName }
+            if (playlist == null) return Pair("Local playlist not found: $playlistName", null)
 
-        Logger.d("Tasker", "PL NAME: ${playlistName}")
+            val tracks = localPlaylistRepository.getFullPlaylistTracks(playlist.id).map { it.toTrack() }
+            if (tracks.isEmpty()) return Pair("Local playlist is empty", null)
 
-        localPlaylistRepository.getAllLocalPlaylists().first().forEach { Logger.d("Tasker", "PL ${it.title}") }
-
-        val playlist = localPlaylistRepository.getAllLocalPlaylists().first().first { it.title == playlistName }
-
-        if(playlist != null) {
-            return TaskerQueueData(
-                listTracks = localPlaylistRepository.getFullPlaylistTracks(playlist.id).map { it.toTrack() },
-                playlistId = LOCAL_PLAYLIST_ID + playlist.id,
-                playlistType = PlaylistType.PLAYLIST,
-            ).let { data -> Pair("Success", data) }
-
+            return Pair(
+                "Success",
+                TaskerQueueData(
+                    listTracks = tracks,
+                    playlistId = LOCAL_PLAYLIST_ID + playlist.id,
+                    playlistName = playlist.title,
+                    playlistType = PlaylistType.PLAYLIST,
+                )
+            )
+        } catch (t: Throwable) {
+            Logger.e("Tasker", "Error loading local playlist: ${t.message}")
+            return Pair("Exception: ${t.localizedMessage}", null)
         }
-        return Pair("Error", null)
     }
 
     suspend fun getQueueForLibraryPlaylist(
@@ -281,6 +338,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                     return TaskerQueueData(
                         listTracks = pd.data!!.first.tracks,
                         playlistId = pd.data!!.first.id,
+                        playlistName = playlist.title,
                         playlistType = PlaylistType.PLAYLIST,
                     ).let { data -> Pair("Success", data) }
 
@@ -297,39 +355,43 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
 
         when (playlistName) {
 
-            AutoPlaylist.DownloadedSongs.title -> {
+            AutoPlaylist.DownloadedSongs.name -> {
                 return TaskerQueueData(
                     listTracks = songRepository.getDownloadedSongs().first()?.map { it.toTrack() } ?: emptyList(),
                     playlistId = "",
+                    playlistName = AutoPlaylist.DownloadedSongs.title,
                     playlistType = PlaylistType.PLAYLIST,
                 ).let { data -> Pair("Success", data) }
             }
 
-            AutoPlaylist.Liked.title -> {
+            AutoPlaylist.Liked.name -> {
                 return TaskerQueueData(
                     listTracks = songRepository.getLikedSongs().first().map { it.toTrack() },
                     playlistId = "",
+                    playlistName = AutoPlaylist.Liked.title,
                     playlistType = PlaylistType.PLAYLIST,
                 ).let { data -> Pair("Success", data) }
             }
 
-            AutoPlaylist.MostPlayed.title -> {
+            AutoPlaylist.MostPlayed.name -> {
                 return TaskerQueueData(
                     listTracks = songRepository.getMostPlayedSongs().first().map { it.toTrack() },
                     playlistId = "",
+                    playlistName = AutoPlaylist.MostPlayed.title,
                     playlistType = PlaylistType.PLAYLIST,
                 ).let { data -> Pair("Success", data) }
             }
 
-            AutoPlaylist.RecentPlayed.title -> {
+            AutoPlaylist.RecentPlayed.name -> {
                 return TaskerQueueData(
                     listTracks = songRepository.getRecentSong(100, 0).map { it.toTrack() },
                     playlistId = "",
+                    playlistName = AutoPlaylist.RecentPlayed.title,
                     playlistType = PlaylistType.PLAYLIST,
                 ).let { data -> Pair("Success", data) }
             }
 
-            AutoPlaylist.ArtistRadio.title -> {
+            AutoPlaylist.ArtistRadio.name -> {
 
                 var artistId = arg
 
@@ -358,6 +420,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                                         return TaskerQueueData(
                                             listTracks = data.first,
                                             playlistId = artistData.data?.radioId!!.playlistId,
+                                            playlistName = " ${artistData.data?.name} Radio",
                                             playlistType = PlaylistType.RADIO,
                                             ).let { data -> Pair("Success", data) }
 
@@ -379,7 +442,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
 
             }
 
-            AutoPlaylist.ArtistSongs.title -> {
+            AutoPlaylist.ArtistSongs.name -> {
 
                 var artistId = arg
 
@@ -409,13 +472,14 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                                         return TaskerQueueData(
                                             listTracks = data.first,
                                             playlistId = artistData.data?.radioId!!.playlistId,
+                                            playlistName = " ${artistData.data?.name} Songs",
                                             playlistType = PlaylistType.RADIO,
                                         ).let { data -> Pair("Success", data) }
 
                                     }
 
                                     else -> {
-                                        return Pair("Error", null)
+                                        return Pair("Error: ${res.message}", null)
                                     }
                                 }
                             }
@@ -424,11 +488,11 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
 
 
                 } else {
-                    return Pair("Error", null)
+                    return Pair("Error: Artist ID is null", null)
                 }
             }
 
-            AutoPlaylist.AlbumSongs.title -> {
+            AutoPlaylist.AlbumSongs.name -> {
 
                 var albumId = arg
 
@@ -452,6 +516,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                                 return TaskerQueueData(
                                     listTracks = data.tracks,
                                     playlistId = data.audioPlaylistId,
+                                    playlistName = data.title,
                                     playlistType = PlaylistType.ALBUM,
                                 ).let { data -> Pair("Success", data) }
 
@@ -511,7 +576,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                 }
 
                 else -> {
-                    Pair("Error: Unknown playlist type", null)
+                    Pair("Error: Unknown playlist $playlistName", null)
                 }
             }
         }
@@ -528,7 +593,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                     listTracks = if ((limit != null) && (limit > 0)) queueData.listTracks.take(limit) else queueData.listTracks,
                     firstPlayedTrack = queueData.listTracks.first(),
                     playlistId = queueData.playlistId,
-                    playlistName = playlistName,
+                    playlistName = queueData.playlistName,
                     playlistType = queueData.playlistType,
                     continuation = null,
                 ),
