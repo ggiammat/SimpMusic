@@ -32,6 +32,7 @@ import com.maxrave.simpmusic.R
 import kotlin.getValue
 import kotlin.collections.first
 import com.maxrave.domain.data.model.browse.album.Track
+import com.maxrave.domain.mediaservice.handler.PlayerEvent
 import com.maxrave.domain.utils.toTrack
 import com.maxrave.simpmusic.tasker.ConfigUIChoiceOption
 
@@ -599,8 +600,12 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                 ),
             )
 
-            if (input.regular.sorting == SortType.Shuffled.toString()) {
-                mediaPlayerHandler.shufflePlaylist(0)
+            if (input.regular.sorting == SortType.Shuffled.toString() && !mediaPlayerHandler.player.shuffleModeEnabled) {
+                mediaPlayerHandler.onPlayerEvent(PlayerEvent.Shuffle)
+            }
+
+            if (input.regular.sorting == SortType.Natural.toString() && mediaPlayerHandler.player.shuffleModeEnabled) {
+                mediaPlayerHandler.onPlayerEvent(PlayerEvent.Shuffle)
             }
 
             if (limit != null && limit == -1) {
@@ -614,6 +619,7 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                 Config.PLAYLIST_CLICK,
                 0,
             )
+
         } else {
             return TaskerPluginResultErrorWithOutput(1, "Error starting playlist: ${tracksResult.first}")
         }
