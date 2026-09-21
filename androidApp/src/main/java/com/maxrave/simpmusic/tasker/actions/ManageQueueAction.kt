@@ -614,6 +614,8 @@ class ManageQueueActionRunner : TaskerCommonRunner<ManageQueueInput, ManageQueue
                 dataStoreManager.setEndlessQueue(false)
             }
 
+            // set the first track to play. There is a bug here because if we want to shuffle the playlist,
+            // we cannot load the first item in the queue, because it will always play the first item in the queue, even if we shuffle the playlist.
             mediaPlayerHandler.loadMediaItem(
                 queueData.listTracks.first(),
                 Config.PLAYLIST_CLICK,
